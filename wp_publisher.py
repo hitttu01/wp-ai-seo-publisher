@@ -158,7 +158,7 @@ def upload_image_to_wordpress(image_path: str, title: str):
 
 def generate_faq_accordion_html(faq_items: list) -> str:
     """
-    Generates styled HTML <details> and <summary> accordion markup for 10 FAQs.
+    Generates styled HTML <details> and <summary> accordion markup for the FAQs.
     Matches Easy Accordion styling:
     - Light gray background (#f5f5f5) for summary question box
     - Bold dark text
@@ -199,7 +199,7 @@ def generate_faq_accordion_html(faq_items: list) -> str:
 
 def generate_faq_schema_jsonld(faq_items: list) -> str:
     """
-    Generates strict Google-compliant JSON-LD FAQ Schema markup for the 10 FAQs.
+    Generates strict Google-compliant JSON-LD FAQ Schema markup for insertion into the <head> scripts.
     """
     if not faq_items:
         return ""
@@ -229,7 +229,7 @@ def generate_faq_schema_jsonld(faq_items: list) -> str:
     }
 
     schema_json = json.dumps(schema_dict, indent=2, ensure_ascii=False)
-    return f'\n<script type="application/ld+json">\n{schema_json}\n</script>\n'
+    return f'<script type="application/ld+json">\n{schema_json}\n</script>'
 
 
 def publish_wordpress_post(
@@ -242,18 +242,18 @@ def publish_wordpress_post(
 ):
     """
     Publishes the blog post to WordPress strictly as a DRAFT.
-    - Dynamically resolves category ID (defaulting to 'Guides') to completely eliminate 'Uncategorized'.
-    - Uploads 3 images to WP Media Library.
-    - Sets featured_media to Image 1.
-    - Passes all 3 media IDs to gallery meta fields (boldthemes_theme_images, _override_images, etc.).
+    - Dynamically resolves category ID (defaulting to 'Guides') to eliminate 'Uncategorized'.
+    - Uploads 3 images to WP Media Library and sets featured_media to Image 1.
+    - Passes all 3 media IDs to gallery meta fields.
     - Does NOT append <img> tags to HTML body.
+    - Appends styled HTML FAQ Accordion (<details>/<summary>) to the body content.
+    - Relocates JSON-LD FAQ Schema ENTIRELY to custom header/post meta fields for <head> insertion.
     - Sets Yoast SEO title and dynamic meta description.
-    - Appends styled HTML FAQ Accordion (<details>/<summary>) and JSON-LD FAQ Schema.
     - Cleans up temporary local images after successful upload.
     """
     posts_url = f"{WP_URL}/wp-json/wp/v2/posts"
 
-    # 1. Dynamically resolve category ID to ensure "Uncategorized" (ID 1) is never used
+    # 1. Dynamically resolve category ID (defaults to 'Guides')
     if category_id is not None and int(category_id) != 1:
         target_category_id = int(category_id)
     else:
@@ -272,19 +272,21 @@ def publish_wordpress_post(
     featured_media_id = media_ids[0] if media_ids else 0
     media_ids_csv = ",".join(map(str, media_ids))
 
-    # 3. Build full content: formatted body + FAQ Accordion + FAQ Schema (NO <img> tags in body)
+    # 3. Build body content: Formatted body + styled HTML FAQ Accordion
+    # CRITICAL: JSON-LD Schema is strictly excluded from body content
     full_content = content.rstrip()
 
+    schema_script = ""
     if faq_items:
         faq_accordion_html = generate_faq_accordion_html(faq_items)
-        faq_schema_script = generate_faq_schema_jsonld(faq_items)
-        full_content += faq_accordion_html + faq_schema_script
+        full_content += faq_accordion_html
+        schema_script = generate_faq_schema_jsonld(faq_items)
 
     # 4. Yoast SEO Metadata
     yoast_title = title
     yoast_metadesc = extract_yoast_description(content)
 
-    # 5. Build WordPress Post Payload with dynamically fetched category ID
+    # 5. Build WordPress Post Payload with Schema injected into Custom Header Meta Fields
     payload = {
         'title': title,
         'content': full_content,
@@ -295,6 +297,16 @@ def publish_wordpress_post(
             # Yoast SEO Meta
             '_yoast_wpseo_title': yoast_title,
             '_yoast_wpseo_metadesc': yoast_metadesc,
+            # Custom Header Meta Fields for <head> Script Injection
+            '_custom_header_scripts': schema_script,
+            '_header_scripts': schema_script,
+            '_custom_head': schema_script,
+            '_genesis_custom_header_scripts': schema_script,
+            '_schema': schema_script,
+            '_schema_code': schema_script,
+            'custom_header_scripts': schema_script,
+            'header_scripts': schema_script,
+            '_bt_header_scripts': schema_script,
             # Theme Gallery Meta
             '_post_gallery': media_ids_csv,
             'boldthemes_theme_images': media_ids,
@@ -323,18 +335,20 @@ def publish_wordpress_post(
 
             print(f"\n✅ Post successfully published as DRAFT! (Post ID: {post_id})")
             print(f"📁 Category Assigned      : ID {target_category_id} ({category_name})")
+            print(f"🛡️ FAQ Schema Injected     : Relocated to Header Meta Fields (<head>)")
             print(f"📝 WordPress Edit URL     : {edit_url}")
             print(f"🌐 Post Preview URL      : {preview_url}")
 
             # Local cleanup after successful upload
             cleanup_local_images(image_paths)
 
-            # Attach URLs to returned dictionary
+            # Attach URLs and metadata to returned dictionary
             post_data['edit_url'] = edit_url
             post_data['preview_url'] = preview_url
             post_data['yoast_metadesc'] = yoast_metadesc
             post_data['media_ids'] = media_ids
             post_data['category_id'] = target_category_id
+            post_data['schema_script'] = schema_script
 
             return post_data
         else:
