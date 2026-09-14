@@ -128,7 +128,7 @@ def main():
     st.write("")
 
     # Main Tabs
-    tab_single, tab_batch = st.tabs(["📝 Single Post Generator", "📊 Google Sheets Batch Queue"])
+    tab_single, tab_batch, tab_inspect = st.tabs(["📝 Single Post Generator", "📊 Google Sheets Batch Queue", "🔍 Post Meta Inspector"])
 
     with tab_single:
         st.subheader("Generate & Publish Single Article")
@@ -297,6 +297,64 @@ def main():
                     st.error(f"Could not load Google Sheet (HTTP {resp.status_code}). Ensure link sharing is set to 'Anyone with the link can view'.")
             except Exception as e:
                 st.error(f"Error processing sheet: {e}")
+
+    with tab_inspect:
+        st.subheader("🔍 WordPress Post Meta & Schema Inspector")
+        st.markdown("Inspect all raw metadata, categories, and content of any published or draft post via the WordPress REST API.")
+
+        inspect_post_id = st.number_input("Enter WordPress Post ID to Inspect", min_value=1, value=7246, step=1)
+        
+        if st.button("🔎 Fetch Post Metadata", type="primary"):
+            import requests
+            from requests.auth import HTTPBasicAuth
+            
+            wp_url = os.getenv("WP_SITE_URL", "").rstrip('/')
+            wp_user = os.getenv("WP_USERNAME")
+            wp_pass = os.getenv("WP_APP_PASSWORD")
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }
+            
+            with st.spinner(f"Fetching Post {inspect_post_id} from WordPress REST API..."):
+                try:
+                    resp = requests.get(
+                        f"{wp_url}/wp-json/wp/v2/posts/{inspect_post_id}?context=edit",
+                        auth=HTTPBasicAuth(wp_user, wp_pass),
+                        headers=headers,
+                        timeout=20
+                    )
+                    
+                    if resp.status_code == 200:
+                        post_json = resp.json()
+                        st.success(f"✅ Successfully retrieved Post ID: **{inspect_post_id}**")
+                        
+                        col1, col2, col3 = st.columns(3)
+                        col1.metric("Post Status", post_json.get("status", "").upper())
+                        col2.metric("Categories", str(post_json.get("categories", [])))
+                        col3.metric("Featured Media ID", post_json.get("featured_media", 0))
+                        
+                        st.markdown(f"**Post Title:** `{post_json.get('title', {}).get('raw', '')}`")
+                        st.markdown(f"**WordPress Edit URL:** [Open in Editor]({wp_url}/wp-admin/post.php?post={inspect_post_id}&action=edit)")
+                        
+                        st.divider()
+                        st.subheader("1. Registered Post Meta in WordPress Database:")
+                        st.json(post_json.get("meta", {}))
+                        
+                        st.divider()
+                        st.subheader("2. Body Content Check (Verification for Clean Body):")
+                        raw_content = post_json.get("content", {}).get("raw", "")
+                        if "<script" in raw_content:
+                            st.warning("⚠️ <script> tags detected in body content.")
+                        else:
+                            st.success("✅ Clean Body: Zero <script> tags inside post body content.")
+                            
+                        with st.expander("View Full Raw Body Content"):
+                            st.code(raw_content, language="html")
+                            
+                    else:
+                        st.error(f"❌ Failed to fetch Post ID {inspect_post_id}. HTTP Status: {resp.status_code} - {resp.text}")
+                except Exception as e:
+                    st.error(f"Error: {e}")
 
 
 if __name__ == "__main__":
