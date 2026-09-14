@@ -231,13 +231,16 @@ def main():
                         st.info(yoast_desc)
                         st.markdown(f"**Theme Gallery IDs (`_post_gallery`):** `{','.join(map(str, post_data.get('media_ids', [])))}`")
 
-                    with st.expander("❓ Inspect Generated FAQ Accordion & Schema"):
-                        st.subheader("FAQ Accordion Items:")
+                    with st.expander("❓ Inspect Generated FAQ Accordion & Header Schema (<head>)"):
+                        st.subheader("1. Rendered FAQ Accordion (Injected into Body):")
                         for idx, item in enumerate(faq_items, 1):
                             st.markdown(f"**{idx}. {item.get('question')}**")
                             st.write(item.get('answer'))
 
-                    with st.expander("📄 Inspect Full HTML Body Content"):
+                        st.subheader("2. JSON-LD FAQ Schema (Routed to Header Meta / <head>):")
+                        st.code(post_data.get("schema_script", ""), language="html")
+
+                    with st.expander("📄 Inspect Full HTML Body Content (Clean Body)"):
                         st.code(formatted_content, language="html")
 
                 else:
