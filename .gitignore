@@ -1,0 +1,13 @@
+# Security (Keep API keys safe)
+.env
+
+# Virtual Environments
+venv/
+env/
+
+# Python Cache
+__pycache__/
+*.pyc
+
+# MacOS System Files
+.DS_Store
