@@ -107,7 +107,8 @@ def get_or_create_category(category_name: str = "Guides") -> int:
 
 def upload_image_to_wordpress(image_path: str, title: str):
     """
-    Uploads an image to the WordPress Media Library and sets alt_text and title.
+    Uploads an image to the WordPress Media Library via /wp-json/wp/v2/media.
+    Sets alt_text, title, and caption matching the post title for image SEO.
     Returns (media_id, source_url).
     """
     if not os.path.exists(image_path):
@@ -135,7 +136,7 @@ def upload_image_to_wordpress(image_path: str, title: str):
             media_id = media_data.get('id')
             source_url = media_data.get('source_url', '')
 
-            # Set alt_text and title matching the post title for image SEO
+            # Set alt_text, title, and caption for image SEO
             requests.post(
                 f"{media_url}/{media_id}",
                 auth=HTTPBasicAuth(USERNAME, PASSWORD),
@@ -147,7 +148,7 @@ def upload_image_to_wordpress(image_path: str, title: str):
                 },
                 timeout=15
             )
-            print(f" -> Uploaded image: {image_path} (Media ID: {media_id})")
+            print(f" -> Uploaded image to Media Library: {image_path} (Media ID: {media_id})")
             return media_id, source_url
         else:
             print(f"Failed to upload image {image_path}: {response.status_code} - {response.text}")
@@ -243,25 +244,34 @@ def publish_wordpress_post(
 ):
     """
     Publishes the blog post to WordPress strictly as a DRAFT.
-    - Dynamically resolves category ID (defaulting to 'Guides') to eliminate 'Uncategorized'.
-    - Uploads 3 images to WP Media Library and sets featured_media to Image 1.
-    - Passes all 3 media IDs to gallery meta fields.
-    - Does NOT append <img> tags to HTML body.
-    - Appends styled HTML FAQ Accordion (<details>/<summary>) to the body content.
-    - Relocates JSON-LD FAQ Schema ENTIRELY to custom header/post meta fields for "Insert Script to <head>".
-    - Strips any raw <script type="application/ld+json"> tags from the content payload.
-    - Sets Yoast SEO title and dynamic meta description.
-    - Cleans up temporary local images after successful upload.
+    
+    1. FEATURED IMAGE BINDING:
+       - Uploads images to WordPress Media Library first via /wp-json/wp/v2/media.
+       - Assigns the primary uploaded media ID to 'featured_media' and meta['_thumbnail_id'].
+       
+    2. CUSTOM GALLERY / IN-CONTENT IMAGES ("Images" Box):
+       - Maps all 3 media IDs into the theme's custom post meta fields (boldthemes_theme_images, _override_images, etc.).
+       - Strictly avoids injecting raw <img> tags into the HTML body content.
+       
+    3. SCHEMA HEADER INJECTION ("Insert Script to <head>"):
+       - Builds Google-compliant JSON-LD FAQ Schema script.
+       - Strictly excludes raw schema from body content.
+       - Routes the schema string across all standard header injection meta keys (_insert_head, _custom_header_scripts, etc.).
+       
+    4. YOAST SEO METADATA & CLEAN DRAFT STATUS:
+       - Sets Yoast SEO title and dynamic meta description.
+       - Sets status to 'draft' and assigns target category.
+       - Cleans up temporary local images after upload.
     """
     posts_url = f"{WP_URL}/wp-json/wp/v2/posts"
 
-    # 1. Dynamically resolve category ID (defaults to 'Guides')
+    # Step 1: Dynamically resolve category ID (defaults to 'Guides' / ID 4)
     if category_id is not None and int(category_id) != 1:
         target_category_id = int(category_id)
     else:
         target_category_id = get_or_create_category(category_name or "Guides")
 
-    # 2. Upload the 3 images to the WordPress Media Library
+    # Step 2: Upload all generated images to the WordPress Media Library first
     media_ids = []
     source_urls = []
 
@@ -271,11 +281,11 @@ def publish_wordpress_post(
             media_ids.append(m_id)
             source_urls.append(s_url)
 
+    # 1. Featured Image Binding (Primary Image)
     featured_media_id = media_ids[0] if media_ids else 0
     media_ids_csv = ",".join(map(str, media_ids))
 
-    # 3. Build body content: Ensure raw JSON-LD schema is strictly removed from the body editor
-    # Strip any accidental <script type="application/ld+json"> tags from content string
+    # Step 3: Build clean body content (No raw <img> tags and no raw schema <script>)
     clean_body = re.sub(
         r'<script\b[^>]*type=[\'"]application/ld\+json[\'"][^>]*>.*?</script>',
         '',
@@ -289,22 +299,41 @@ def publish_wordpress_post(
         clean_body += faq_accordion_html
         schema_script = generate_faq_schema_jsonld(faq_items)
 
-    # 4. Yoast SEO Metadata
+    # Step 4: Yoast SEO Metadata
     yoast_title = title
     yoast_metadesc = extract_yoast_description(content)
 
-    # 5. Build WordPress Post Payload with Schema injected into Custom Header Meta Fields
+    # Step 5: Build WordPress Post Payload with all custom field bindings
     payload = {
         'title': title,
         'content': clean_body,
         'status': 'draft',  # CRITICAL: Always published as draft
-        'featured_media': featured_media_id,
+        'featured_media': featured_media_id,  # Proper Featured Image Binding
         'categories': [target_category_id],
         'meta': {
             # Yoast SEO Meta
             '_yoast_wpseo_title': yoast_title,
             '_yoast_wpseo_metadesc': yoast_metadesc,
-            # Custom Header Meta Fields for "Insert Script to <head>" Injection
+            
+            # 1. Featured Image Meta Binding
+            '_thumbnail_id': featured_media_id,
+            
+            # 2. Custom Gallery / In-Content Images ("Images" Box in BoldThemes)
+            '_boldthemes_theme_images': media_ids,
+            'boldthemes_theme_images': media_ids,
+            '_override_images': media_ids_csv,
+            'override_images': media_ids_csv,
+            '_bt_images': media_ids_csv,
+            'bt_images': media_ids_csv,
+            '_images': media_ids_csv,
+            'images': media_ids_csv,
+            '_post_gallery': media_ids_csv,
+            'post_gallery': media_ids_csv,
+            '_boldthemes_theme_grid_gallery': '1',
+            '_override_grid_gallery': '1',
+            'grid_gallery': '1',
+            
+            # 3. Schema Header Injection ("Insert Script to <head>")
             '_insert_head': schema_script,
             'insert_head': schema_script,
             '_insert_scripts_head': schema_script,
@@ -334,15 +363,7 @@ def publish_wordpress_post(
             '_bt_header_scripts': schema_script,
             'bt_header_scripts': schema_script,
             '_schema': schema_script,
-            '_schema_code': schema_script,
-            # Theme Gallery Meta
-            '_post_gallery': media_ids_csv,
-            'boldthemes_theme_images': media_ids,
-            '_boldthemes_theme_images': media_ids,
-            '_override_images': media_ids_csv,
-            '_bt_images': media_ids_csv,
-            '_images': media_ids_csv,
-            'images': media_ids_csv
+            '_schema_code': schema_script
         }
     }
 
@@ -362,6 +383,8 @@ def publish_wordpress_post(
             preview_url = post_data.get('link', '')
 
             print(f"\n✅ Post successfully published as DRAFT! (Post ID: {post_id})")
+            print(f"🖼️ Featured Media ID      : {featured_media_id}")
+            print(f"🖼️ Gallery Images Meta     : {media_ids_csv}")
             print(f"📁 Category Assigned      : ID {target_category_id} ({category_name})")
             print(f"🛡️ FAQ Schema Injected     : Routed to Header Meta Fields ('Insert Script to <head>')")
             print(f"📝 WordPress Edit URL     : {edit_url}")
@@ -375,6 +398,7 @@ def publish_wordpress_post(
             post_data['preview_url'] = preview_url
             post_data['yoast_metadesc'] = yoast_metadesc
             post_data['media_ids'] = media_ids
+            post_data['featured_media_id'] = featured_media_id
             post_data['category_id'] = target_category_id
             post_data['schema_script'] = schema_script
 
