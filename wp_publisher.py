@@ -249,13 +249,13 @@ def publish_wordpress_post(
        - Uploads images to WordPress Media Library first via /wp-json/wp/v2/media.
        - Assigns the primary uploaded media ID to 'featured_media' and meta['_thumbnail_id'].
        
-    2. CUSTOM GALLERY / IN-CONTENT IMAGES ("Images" Box):
-       - Sets 'boldthemes_theme_images' to the uploaded Media IDs formatted strictly as a single comma-separated string (e.g., "7294,7295,7296"), NOT a Python list.
+    2. CUSTOM GALLERY / IN-CONTENT IMAGES ("Images" Box via Custom PHP Interceptor):
+       - Sets top-level key 'custom_grid_images' to the uploaded Media IDs formatted strictly as a single comma-separated string (e.g., "7294,7295,7296"), NOT a Python list.
        - Strictly avoids injecting raw <img> tags into the HTML body content.
        
-    3. SCHEMA HEADER INJECTION ("Insert Script to <head>"):
+    3. SCHEMA HEADER INJECTION ("Insert Script to <head>" via Custom PHP Interceptor):
        - Builds Google-compliant JSON-LD FAQ Schema script.
-       - Maps the schema script directly to '_inpost_head_script[synth_header_script]'.
+       - Maps the schema script directly to top-level key 'custom_faq_schema'.
        - Strictly excludes raw schema from body content.
        
     4. YOAST SEO METADATA & CLEAN DRAFT STATUS:
@@ -304,13 +304,16 @@ def publish_wordpress_post(
     yoast_title = title
     yoast_metadesc = extract_yoast_description(content)
 
-    # Step 5: Build WordPress Post Payload with exact reverse-engineered keys
+    # Step 5: Build WordPress Post Payload with top-level custom keys for PHP server interceptor
     payload = {
         'title': title,
         'content': clean_body,
         'status': 'draft',  # CRITICAL: Always published as draft
         'featured_media': featured_media_id,  # Direct Featured Image Binding
         'categories': [target_category_id],
+        # --- Top-Level Custom Keys for Theme Interceptor Snippet ---
+        'custom_grid_images': media_ids_csv,
+        'custom_faq_schema': schema_script,
         'meta': {
             # --- Yoast SEO Meta ---
             '_yoast_wpseo_title': yoast_title,
@@ -318,58 +321,6 @@ def publish_wordpress_post(
             
             # --- Featured Image Postmeta Binding ---
             '_thumbnail_id': featured_media_id,
-            
-            # --- Custom Gallery Images Meta ("Images" Box in BoldThemes) ---
-            # Strictly formatted as a single comma-separated string, NOT a Python list:
-            'boldthemes_theme_images': media_ids_csv,
-            '_boldthemes_theme_images': media_ids_csv,
-            '_override_images': media_ids_csv,
-            'override_images': media_ids_csv,
-            '_bt_images': media_ids_csv,
-            'bt_images': media_ids_csv,
-            '_images': media_ids_csv,
-            'images': media_ids_csv,
-            '_post_gallery': media_ids_csv,
-            'post_gallery': media_ids_csv,
-            '_boldthemes_theme_grid_gallery': '1',
-            '_override_grid_gallery': '1',
-            'grid_gallery': '1',
-            
-            # --- Schema Header Injection ("Insert Script to <head>") ---
-            '_inpost_head_script[synth_header_script]': schema_script,
-            '_inpost_head_script': {'synth_header_script': schema_script},
-            'synth_header_script': schema_script,
-            '_synth_header_script': schema_script,
-            '_insert_head': schema_script,
-            'insert_head': schema_script,
-            '_insert_scripts_head': schema_script,
-            'insert_scripts_head': schema_script,
-            '_insert_script_to_head': schema_script,
-            'insert_script_to_head': schema_script,
-            '_custom_header_scripts': schema_script,
-            'custom_header_scripts': schema_script,
-            '_header_scripts': schema_script,
-            'header_scripts': schema_script,
-            '_custom_head': schema_script,
-            'custom_head': schema_script,
-            '_head_scripts': schema_script,
-            'head_scripts': schema_script,
-            '_header_code': schema_script,
-            'header_code': schema_script,
-            '_custom_code_head': schema_script,
-            'custom_code_head': schema_script,
-            '_genesis_custom_header_scripts': schema_script,
-            '_genesis_scripts': schema_script,
-            '_ihaf_insert_header': schema_script,
-            'ihaf_insert_header': schema_script,
-            '_wpcode_head_script': schema_script,
-            'wpcode_head_script': schema_script,
-            '_boldthemes_theme_header_script': schema_script,
-            'boldthemes_theme_header_script': schema_script,
-            '_bt_header_scripts': schema_script,
-            'bt_header_scripts': schema_script,
-            '_schema': schema_script,
-            '_schema_code': schema_script
         }
     }
 
@@ -390,11 +341,11 @@ def publish_wordpress_post(
 
             print(f"\n✅ Post successfully published as DRAFT! (Post ID: {post_id})")
             print(f"🖼️ Featured Media ID      : {featured_media_id}")
-            print(f"🖼️ Gallery Images Meta     : {media_ids_csv}")
+            print(f"🖼️ Custom Grid Images      : {media_ids_csv}")
             print(f"📁 Category Assigned      : ID {target_category_id} ({category_name})")
-            print(f"🛡️ FAQ Schema Injected     : Routed to Header Meta Fields ('_inpost_head_script[synth_header_script]')")
+            print(f"🛡️ Custom FAQ Schema       : Injected via 'custom_faq_schema' top-level payload")
             print(f"📝 WordPress Edit URL     : {edit_url}")
-            print(f"🌐 Post Preview URL      : {preview_url}")
+            print(f"🌐 Post Preview URL       : {preview_url}")
 
             # Local cleanup after successful upload
             cleanup_local_images(image_paths)
