@@ -250,13 +250,13 @@ def publish_wordpress_post(
        - Assigns the primary uploaded media ID to 'featured_media' and meta['_thumbnail_id'].
        
     2. CUSTOM GALLERY / IN-CONTENT IMAGES ("Images" Box):
-       - Maps all 3 media IDs into the theme's custom post meta fields (boldthemes_theme_images, _override_images, etc.).
+       - Sets 'boldthemes_theme_images' to the uploaded Media IDs formatted strictly as a single comma-separated string (e.g., "7294,7295,7296"), NOT a Python list.
        - Strictly avoids injecting raw <img> tags into the HTML body content.
        
     3. SCHEMA HEADER INJECTION ("Insert Script to <head>"):
        - Builds Google-compliant JSON-LD FAQ Schema script.
+       - Maps the schema script directly to '_inpost_head_script[synth_header_script]'.
        - Strictly excludes raw schema from body content.
-       - Routes the schema string across all standard header injection meta keys (_insert_head, _custom_header_scripts, etc.).
        
     4. YOAST SEO METADATA & CLEAN DRAFT STATUS:
        - Sets Yoast SEO title and dynamic meta description.
@@ -283,6 +283,7 @@ def publish_wordpress_post(
 
     # 1. Featured Image Binding (Primary Image)
     featured_media_id = media_ids[0] if media_ids else 0
+    # Media IDs formatted strictly as a single comma-separated string (NOT a Python list)
     media_ids_csv = ",".join(map(str, media_ids))
 
     # Step 3: Build clean body content (No raw <img> tags and no raw schema <script>)
@@ -303,24 +304,25 @@ def publish_wordpress_post(
     yoast_title = title
     yoast_metadesc = extract_yoast_description(content)
 
-    # Step 5: Build WordPress Post Payload with all custom field bindings
+    # Step 5: Build WordPress Post Payload with exact reverse-engineered keys
     payload = {
         'title': title,
         'content': clean_body,
         'status': 'draft',  # CRITICAL: Always published as draft
-        'featured_media': featured_media_id,  # Proper Featured Image Binding
+        'featured_media': featured_media_id,  # Direct Featured Image Binding
         'categories': [target_category_id],
         'meta': {
-            # Yoast SEO Meta
+            # --- Yoast SEO Meta ---
             '_yoast_wpseo_title': yoast_title,
             '_yoast_wpseo_metadesc': yoast_metadesc,
             
-            # 1. Featured Image Meta Binding
+            # --- Featured Image Postmeta Binding ---
             '_thumbnail_id': featured_media_id,
             
-            # 2. Custom Gallery / In-Content Images ("Images" Box in BoldThemes)
-            '_boldthemes_theme_images': media_ids,
-            'boldthemes_theme_images': media_ids,
+            # --- Custom Gallery Images Meta ("Images" Box in BoldThemes) ---
+            # Strictly formatted as a single comma-separated string, NOT a Python list:
+            'boldthemes_theme_images': media_ids_csv,
+            '_boldthemes_theme_images': media_ids_csv,
             '_override_images': media_ids_csv,
             'override_images': media_ids_csv,
             '_bt_images': media_ids_csv,
@@ -333,7 +335,11 @@ def publish_wordpress_post(
             '_override_grid_gallery': '1',
             'grid_gallery': '1',
             
-            # 3. Schema Header Injection ("Insert Script to <head>")
+            # --- Schema Header Injection ("Insert Script to <head>") ---
+            '_inpost_head_script[synth_header_script]': schema_script,
+            '_inpost_head_script': {'synth_header_script': schema_script},
+            'synth_header_script': schema_script,
+            '_synth_header_script': schema_script,
             '_insert_head': schema_script,
             'insert_head': schema_script,
             '_insert_scripts_head': schema_script,
@@ -386,7 +392,7 @@ def publish_wordpress_post(
             print(f"🖼️ Featured Media ID      : {featured_media_id}")
             print(f"🖼️ Gallery Images Meta     : {media_ids_csv}")
             print(f"📁 Category Assigned      : ID {target_category_id} ({category_name})")
-            print(f"🛡️ FAQ Schema Injected     : Routed to Header Meta Fields ('Insert Script to <head>')")
+            print(f"🛡️ FAQ Schema Injected     : Routed to Header Meta Fields ('_inpost_head_script[synth_header_script]')")
             print(f"📝 WordPress Edit URL     : {edit_url}")
             print(f"🌐 Post Preview URL      : {preview_url}")
 
